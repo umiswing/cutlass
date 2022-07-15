@@ -116,6 +116,7 @@ foreach(EXAMPLE
   34_transposed_conv2d
   35_gemm_softmax
   36_gather_scatter_fusion
+  myfusion
   )
 
   add_subdirectory(${EXAMPLE})
