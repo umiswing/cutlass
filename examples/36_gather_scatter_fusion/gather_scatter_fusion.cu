@@ -195,9 +195,9 @@ using ElementOutput = float;                        // <- data type of elements 
 // The code section below describes matrix layout of input and output matrices.
 // Column Major for Matrix A, B and C.
 //
-using LayoutInputA = cutlass::layout::ColumnMajor;
-using LayoutInputB = cutlass::layout::ColumnMajor;
-using LayoutOutput = cutlass::layout::ColumnMajor;
+using LayoutInputA = cutlass::layout::RowMajor;
+using LayoutInputB = cutlass::layout::RowMajor;
+using LayoutOutput = cutlass::layout::RowMajor;
 
 // This code section describes whether you want to use tensor cores or regular SIMT cores on GPU SM
 using MMAOp = cutlass::arch::OpClassTensorOp;
@@ -257,8 +257,8 @@ using Gemm = cutlass::gemm::device::GemmUniversal<ElementInputA,
                                                   cutlass::arch::OpMultiplyAdd,
                                                   cutlass::ComplexTransform::kNone,
                                                   cutlass::ComplexTransform::kNone,
-                                                  false,  /*GatherA*/
-                                                  true,  /*GatherB*/
+                                                  true,  /*GatherA*/
+                                                  false,  /*GatherB*/
                                                   true   /*ScatterD*/
                                                  >;
 
@@ -271,8 +271,8 @@ int run(Options &options) {
   cutlass::gemm::GemmCoord problem_size = options.problem_size;
 
   // Create a tuple of problem size for matrix multiplication
-  cutlass::gemm::GemmCoord problem_size_real(problem_size.m(),
-                                             options.index_size,
+  cutlass::gemm::GemmCoord problem_size_real(options.index_size,
+                                             problem_size.n(),
                                              problem_size.k());
 
   // Initialize tensors using CUTLASS helper functions
@@ -315,7 +315,7 @@ int run(Options &options) {
       {options.index_size, 1});  // <- Create scatter indices with dimensions val_len x 1
 
   // <- Fill tensor_b_indices on host with unique random integers
-  std::vector<int> to_fill(problem_size.n()) ; // vector with ints.
+  std::vector<int> to_fill(problem_size.m()) ; // vector with ints.
   std::iota (std::begin(to_fill), std::end(to_fill), 0); // Fill with 0, 1, ...., problem_size.n()
   std::random_shuffle(to_fill.begin(), to_fill.end());
   memcpy(tensor_indices.host_data(), to_fill.data(), options.index_size * sizeof(int));
@@ -345,8 +345,8 @@ int run(Options &options) {
       tensor_b.device_data(),             // <- reference to matrix B on device
       tensor_c.device_data(),             // <- reference to matrix C on device
       tensor_d_scattered.device_data(),   // <- reference to matrix D on device
-      tensor_a.layout().capacity(problem_size.mk()),
-      tensor_b.layout().capacity(cutlass::make_Coord(options.index_size, problem_size.n())),
+      tensor_a.layout().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
+      tensor_b.layout().capacity(problem_size.kn()),
       tensor_c.layout().capacity(problem_size.mn()),
       tensor_d_scattered.layout().capacity(problem_size.mn()),
       tensor_a.layout().stride(),
@@ -384,16 +384,16 @@ int run(Options &options) {
   CUTLASS_CHECK(status);
 
   if (options.reference_check) {
-    for (int i = 0; i < problem_size.m(); ++i) {
-      for (int j = 0; j < options.index_size; ++j) {
-        int b_c_d_col = tensor_indices.at({j, 0});
+    for (int i = 0; i < options.index_size; ++i) {
+        int a_c_d_row = tensor_indices.at({i, 0});
+      for (int j = 0; j < problem_size.n(); ++j) {
 
         for (int k = 0; k < problem_size.k(); ++k) {
-            tensor_d_ref.at({i, b_c_d_col}) +=
-              alpha * tensor_a.at({i, k}) * tensor_b.at({k, b_c_d_col});
+            tensor_d_ref.at({a_c_d_row, j}) +=
+              alpha * tensor_a.at({a_c_d_row, k}) * tensor_b.at({k, j});
         }
        
-        tensor_d_ref.at({i, b_c_d_col}) += (beta * tensor_c.at({i, b_c_d_col}));
+        tensor_d_ref.at({a_c_d_row, j}) += (beta * tensor_c.at({a_c_d_row, j}));
       }
     }
 
