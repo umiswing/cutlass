@@ -353,8 +353,8 @@ int run(Options &options) {
       tensor_b.layout().stride(),
       tensor_c.layout().stride(),
       tensor_d_scattered.layout().stride(),
-      nullptr,                             // <- pointer to index vector to gather A on device
-      tensor_indices.device_data(),       // <- pointer to index vector to gather B on device
+      tensor_indices.device_data(),                             // <- pointer to index vector to gather A on device
+      nullptr,       // <- pointer to index vector to gather B on device
       tensor_indices.device_data()};      // <- pointer to index vector to scatter D on device
 
   // Using the arguments, query for extra workspace required for matrix multiplication computation
