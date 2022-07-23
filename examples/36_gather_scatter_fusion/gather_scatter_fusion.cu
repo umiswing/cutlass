@@ -188,8 +188,8 @@ struct Options {
 // elements in input matrices.
 using ElementAccumulator = float;                   // <- data type of accumulator
 using ElementComputeEpilogue = ElementAccumulator;  // <- data type of epilogue operations
-using ElementInputA = cutlass::half_t;;             // <- data type of elements in input matrix A
-using ElementInputB = cutlass::half_t;;             // <- data type of elements in input matrix B
+using ElementInputA = float;;             // <- data type of elements in input matrix A
+using ElementInputB = float;;             // <- data type of elements in input matrix B
 using ElementOutput = float;                        // <- data type of elements in output matrix D
 
 // The code section below describes matrix layout of input and output matrices.
@@ -207,11 +207,11 @@ using SmArch = cutlass::arch::Sm80;
 
 // This code section describes the tile size a thread block will compute
 using ShapeMMAThreadBlock =
-    cutlass::gemm::GemmShape<128, 128, 32>;  // <- threadblock tile M = 128, N = 128, K = 32
+    cutlass::gemm::GemmShape<128, 128, 16>;  // <- threadblock tile M = 128, N = 128, K = 32
 // This code section describes tile size a warp will compute
-using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 32>;  // <- warp tile M = 64, N = 64, K = 32 
+using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 16>;  // <- warp tile M = 64, N = 64, K = 32 
 // This code section describes the size of MMA op
-using ShapeMMAOp = cutlass::gemm::GemmShape<16, 8, 16>;  // <- MMA Op tile M = 8, N = 8, K = 4
+using ShapeMMAOp = cutlass::gemm::GemmShape<16, 8, 8>;  // <- MMA Op tile M = 8, N = 8, K = 4
 // 16, 8, 8 -> Turing
 // 16, 8, 16 -> Ampere
 
@@ -252,8 +252,8 @@ using Gemm = cutlass::gemm::device::GemmUniversal<ElementInputA,
                                                   EpilogueOp,
                                                   SwizzleThreadBlock,
                                                   NumStages,
-                                                  8,     /*alignmentA*/
-                                                  8,     /*alignmengB*/
+                                                  4,     /*alignmentA*/
+                                                  4,     /*alignmengB*/
                                                   cutlass::arch::OpMultiplyAdd,
                                                   cutlass::ComplexTransform::kNone,
                                                   cutlass::ComplexTransform::kNone,
