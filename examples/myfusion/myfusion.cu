@@ -38,7 +38,7 @@ template <typename ElementAccumulator=float, typename ElementComputeEpilogue=flo
 void gather_gemm_scatter(ElementInputA *const A, ElementInputB *const B,
                          ElementAccumulator *const C, ElementOutput *const D,
                          const int m, const int n, const int k,
-                         const IdxT *a_indices, const IdxT *c_d_indices,
+                         const IdxT *a_indices, const IdxT *b_indices, const IdxT *c_d_indices,
                          const int indices_size,
                          ElementComputeEpilogue const alpha,
                          ElementComputeEpilogue const beta) {

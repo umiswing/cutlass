@@ -252,8 +252,8 @@ using Gemm = cutlass::gemm::device::GemmUniversal<ElementInputA,
                                                   EpilogueOp,
                                                   SwizzleThreadBlock,
                                                   NumStages,
-                                                  4,     /*alignmentA*/
-                                                  4,     /*alignmengB*/
+                                                  128 / cutlass::sizeof_bits<ElementInputA>::value,     /*alignmentA*/
+                                                  128 / cutlass::sizeof_bits<ElementInputB>::value,     /*alignmengB*/
                                                   cutlass::arch::OpMultiplyAdd,
                                                   cutlass::ComplexTransform::kNone,
                                                   cutlass::ComplexTransform::kNone,
@@ -293,10 +293,16 @@ int run(Options &options) {
   std::vector<ElementOutput> tensor_c(problem_size.m()*problem_size.n());
   std::vector<ElementOutput> tensor_d_scattered(problem_size.m()*problem_size.n());
 
-  std::generate(tensor_a.begin(),tensor_a.begin(),[](){return rand()%7;});
-  std::generate(tensor_b.begin(),tensor_b.begin(),[](){return rand()%7;});
-  std::generate(tensor_c.begin(),tensor_c.begin(),[](){return rand()%7;});
-  std::generate(tensor_d_scattered.begin(),tensor_d_scattered.begin(),[](){return rand()%7;});
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<float> dist(-3,3);
+  auto ran = [&dist, &gen](){
+    return dist(gen);
+  };
+  std::generate(tensor_a.begin(), tensor_a.end(), ran);
+  std::generate(tensor_b.begin(), tensor_b.end(), ran);
+  std::generate(tensor_c.begin(), tensor_c.end(), ran);
+  std::generate(tensor_d_scattered.begin(), tensor_d_scattered.end(), ran);
 
 #if 0
   // Fill input and output matrices on host using CUTLASS helper functions
@@ -329,12 +335,17 @@ int run(Options &options) {
 #endif
 
   std::vector<int> tensor_indices(options.index_size);
+  std::vector<int> tensor_out_indices(options.index_size);
+
 
   // <- Fill tensor_b_indices on host with unique random integers
   std::vector<int> to_fill(problem_size.m()) ; // vector with ints.
   std::iota (std::begin(to_fill), std::end(to_fill), 0); // Fill with 0, 1, ...., problem_size.n()
   std::random_shuffle(to_fill.begin(), to_fill.end());
   memcpy(tensor_indices.data(), to_fill.data(), options.index_size * sizeof(int));
+
+  std::random_shuffle(to_fill.begin(), to_fill.end());
+  memcpy(tensor_out_indices.data(), to_fill.data(), options.index_size * sizeof(int));
 
   // Copy data from host to GPU
 #if 0
@@ -350,6 +361,7 @@ int run(Options &options) {
   ElementOutput *d_tensor_c;
   ElementOutput *d_tensor_d_scattered;
   int *d_tensor_indices;
+  int *d_tensor_out_indices;
 
   cudaMalloc(&d_tensor_a, tensor_a.size() * sizeof(ElementInputA));
   cudaMalloc(&d_tensor_b, tensor_b.size() * sizeof(ElementInputB));
@@ -357,6 +369,7 @@ int run(Options &options) {
   cudaMalloc(&d_tensor_d_scattered,
              tensor_d_scattered.size() * sizeof(ElementOutput));
   cudaMalloc(&d_tensor_indices, tensor_indices.size() * sizeof(int));
+  cudaMalloc(&d_tensor_out_indices, tensor_out_indices.size() * sizeof(int));
 
   cudaDeviceSynchronize();
 
@@ -372,11 +385,14 @@ int run(Options &options) {
   cudaMemcpy(d_tensor_indices, tensor_indices.data(),
              tensor_indices.size() * sizeof(int),
              cudaMemcpyHostToDevice);
+  cudaMemcpy(d_tensor_out_indices, tensor_out_indices.data(),
+             tensor_out_indices.size() * sizeof(int),
+             cudaMemcpyHostToDevice);
 
   cudaDeviceSynchronize();
   // Initialize alpha/beta for dot product computation
   ElementComputeEpilogue alpha = ElementComputeEpilogue(1);
-  ElementComputeEpilogue beta = ElementComputeEpilogue(1);
+  ElementComputeEpilogue beta = ElementComputeEpilogue(0);
 
   // Split K dimension into 1 partitions
   int split_k_slices = 1;
@@ -402,7 +418,7 @@ int run(Options &options) {
       cutlass::layout::RowMajor().stride(),
       d_tensor_indices,                             // <- pointer to index vector to gather A on device
       nullptr,       // <- pointer to index vector to gather B on device
-      d_tensor_indices};      // <- pointer to index vector to scatter D on device
+      d_tensor_out_indices};      // <- pointer to index vector to scatter D on device
 
   // Using the arguments, query for extra workspace required for matrix multiplication computation
   size_t workspace_size = Gemm::get_workspace_size(arguments);
@@ -436,17 +452,18 @@ int run(Options &options) {
 
   if (options.reference_check) {
     for (int i = 0; i < options.index_size; ++i) {
-      int a_c_d_row = tensor_indices.at(i);
+      int a_row = tensor_indices.at(i);
+      int c_d_row = tensor_out_indices.at(i);
       for (int j = 0; j < problem_size.n(); ++j) {
 
         for (int k = 0; k < problem_size.k(); ++k) {
-          tensor_d_ref.at(a_c_d_row * problem_size.n() + j) +=
-              alpha * tensor_a.at(a_c_d_row * problem_size.k() + k) *
+          tensor_d_ref.at(c_d_row * problem_size.n() + j) +=
+              alpha * tensor_a.at(a_row * problem_size.k() + k) *
               tensor_b.at(k * problem_size.n() + j);
         }
 
-        tensor_d_ref.at(a_c_d_row * problem_size.n() + j) +=
-            (beta * tensor_c.at(a_c_d_row * problem_size.n() + j));
+        tensor_d_ref.at(c_d_row * problem_size.n() + j) +=
+            (beta * tensor_c.at(c_d_row * problem_size.n() + j));
       }
     }
 
@@ -557,6 +574,7 @@ int run(Options &options) {
 }
 
 int main(int argc, const char ** argv) {
+  srand(time(NULL));
   bool notSupported = false;
 
   // Ampere Tensor Core operations exposed with mma.sync are first available in CUDA 11.0.
