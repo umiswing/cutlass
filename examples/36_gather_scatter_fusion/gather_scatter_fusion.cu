@@ -85,6 +85,17 @@
 #include "cutlass/util/tensor_view_io.h"
 #include "helper.h"
 
+enum Type{kInt,kFloat,kDouble};
+template<typename T>
+__global__ void print(T*const p, size_t const len,Type t) {
+  for(int i=0;i<len;i++) {
+    if(kInt==t)
+    printf("%d,",*(p+i));
+    if(kFloat==t || kDouble==t)
+    printf("%f,",*(p+i));
+  }
+  printf("\n");
+}
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Result structure
@@ -391,12 +402,38 @@ int run(Options &options) {
   CUTLASS_CHECK(status);
 
   // CPU reference calculation
-  std::vector<ElementOutput> tensor_d_ref(problem_size.m() * problem_size.n(),
-                                          0);
+  std::vector<ElementOutput> tensor_d_ref = tensor_d_scattered;
+  std::cout<<"a"<<':';
+  print<<<1,1>>>(d_tensor_a,tensor_a.size(),kFloat);
+  cudaDeviceSynchronize();
+
+  std::cout<<"b"<<':';
+  print<<<1,1>>>(d_tensor_b,tensor_b.size(),kFloat);
+  cudaDeviceSynchronize();
+
+  std::cout<<"c"<<':';
+  print<<<1,1>>>(d_tensor_c,tensor_c.size(),kFloat);
+  cudaDeviceSynchronize();
+
+  std::cout<<"idx"<<':';
+  print<<<1,1>>>(d_tensor_indices,tensor_indices.size(),kInt);
+  cudaDeviceSynchronize();
+
+  std::cout<<"out_idx"<<':';
+  print<<<1,1>>>(d_tensor_out_indices,tensor_out_indices.size(),kInt);
+  cudaDeviceSynchronize();
+
+  std::cout<<"d_scattered0"<<':';
+  print<<<1,1>>>(d_tensor_d_scattered,tensor_d_scattered.size(),kFloat);
+  cudaDeviceSynchronize();
 
   status = gemm_op();
   cudaDeviceSynchronize();
   CUTLASS_CHECK(status);
+
+  std::cout<<"d_scattered1"<<':';
+  print<<<1,1>>>(d_tensor_d_scattered,tensor_d_scattered.size(),kFloat);
+  cudaDeviceSynchronize();
 
   if (options.reference_check) {
     for (int i = 0; i < options.index_size; ++i) {
