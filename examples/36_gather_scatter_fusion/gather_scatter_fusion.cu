@@ -276,17 +276,6 @@ int run(Options &options) {
                                              problem_size.k());
 
   // Initialize tensors using CUTLASS helper functions
-#if 0
-  cutlass::HostTensor<ElementInputA, LayoutInputA> tensor_a(
-      problem_size.mk());  // <- Create matrix A with dimensions M x K
-  cutlass::HostTensor<ElementInputB, LayoutInputB> tensor_b(
-      problem_size.kn());  // <- Create matrix B with dimensions K x N
-  cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_c(
-      problem_size.mn());  // <- Create matrix C with dimensions M x N 
-  cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_d_scattered(
-      problem_size.mn());  // <- Create matrix D with dimensions M x N used to store output from
-                           // CUTLASS kernel
-#endif
 
   std::vector<ElementInputA> tensor_a(problem_size.m()*problem_size.k());
   std::vector<ElementInputB> tensor_b(problem_size.k()*problem_size.n());
@@ -304,35 +293,6 @@ int run(Options &options) {
   std::generate(tensor_c.begin(), tensor_c.end(), ran);
   //std::generate(tensor_d_scattered.begin(), tensor_d_scattered.end(), ran);
 
-#if 0
-  // Fill input and output matrices on host using CUTLASS helper functions
-  cutlass::reference::host::TensorFillRandomUniform(
-      tensor_a,
-      1,
-      ElementInputA(7),
-      ElementInputA(-8),
-      0);  // <- Fill matrix A on host with uniform-distribution random data
-
-  cutlass::reference::host::TensorFillRandomUniform(
-      tensor_b,
-      1,
-      ElementInputA(7),
-      ElementInputA(-8),
-      0);  // <- Fill matrix B on host with uniform-distribution random data
-
-  cutlass::reference::host::TensorFillRandomUniform(
-      tensor_c,
-      1,
-      ElementOutput(7),
-      ElementOutput(-8),
-      0);  // <- Fill matrix C on host with uniform-distribution random data
-
-  cutlass::reference::host::TensorFill(
-    tensor_d_scattered);  // <- fill matrix D on host with zeros
-
-  cutlass::HostTensor<int, LayoutOutput> tensor_indices(
-      {options.index_size, 1});  // <- Create scatter indices with dimensions val_len x 1
-#endif
 
   std::vector<int> tensor_indices(options.index_size);
   std::vector<int> tensor_out_indices(options.index_size);
@@ -348,13 +308,6 @@ int run(Options &options) {
   memcpy(tensor_out_indices.data(), to_fill.data(), options.index_size * sizeof(int));
 
   // Copy data from host to GPU
-#if 0
-  tensor_a.sync_device();
-  tensor_b.sync_device();
-  tensor_indices.sync_device();
-  tensor_c.sync_device();
-  tensor_d_scattered.sync_device();
-#endif
 
   ElementInputA *d_tensor_a;
   ElementInputB *d_tensor_b;
@@ -438,11 +391,6 @@ int run(Options &options) {
   CUTLASS_CHECK(status);
 
   // CPU reference calculation
-#if 0
-  cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_d_ref(problem_size.mn());
-  cutlass::reference::host::TensorFill(
-    tensor_d_ref.host_view());  // <- Fill matrix D on host with zeros
-#endif
   std::vector<ElementOutput> tensor_d_ref(problem_size.m() * problem_size.n(),
                                           0);
 
@@ -468,9 +416,6 @@ int run(Options &options) {
     }
 
     // Copy output data from CUTLASS and reference kernel to host for comparison
-    #if 0
-    tensor_d_scattered.sync_host();
-    #endif
     cudaMemcpy(tensor_d_scattered.data(),d_tensor_d_scattered,tensor_d_scattered.size()*sizeof(ElementOutput),cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
   
