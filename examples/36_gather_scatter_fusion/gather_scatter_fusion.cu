@@ -124,8 +124,8 @@ struct Options {
   
   Options():
     help(false),
-    problem_size({248, 1024, 1024}),
-    index_size(240),
+    problem_size({4, 4, 4}),
+    index_size(2),
     reference_check(true),
     iterations(20) { }
 
@@ -291,7 +291,7 @@ int run(Options &options) {
   std::vector<ElementInputA> tensor_a(problem_size.m()*problem_size.k());
   std::vector<ElementInputB> tensor_b(problem_size.k()*problem_size.n());
   std::vector<ElementOutput> tensor_c(problem_size.m()*problem_size.n());
-  std::vector<ElementOutput> tensor_d_scattered(problem_size.m()*problem_size.n());
+  std::vector<ElementOutput> tensor_d_scattered(problem_size.m()*problem_size.n(), 0);
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -302,7 +302,7 @@ int run(Options &options) {
   std::generate(tensor_a.begin(), tensor_a.end(), ran);
   std::generate(tensor_b.begin(), tensor_b.end(), ran);
   std::generate(tensor_c.begin(), tensor_c.end(), ran);
-  std::generate(tensor_d_scattered.begin(), tensor_d_scattered.end(), ran);
+  //std::generate(tensor_d_scattered.begin(), tensor_d_scattered.end(), ran);
 
 #if 0
   // Fill input and output matrices on host using CUTLASS helper functions
@@ -391,8 +391,8 @@ int run(Options &options) {
 
   cudaDeviceSynchronize();
   // Initialize alpha/beta for dot product computation
-  ElementComputeEpilogue alpha = ElementComputeEpilogue(1);
-  ElementComputeEpilogue beta = ElementComputeEpilogue(0);
+  ElementComputeEpilogue alpha = ElementComputeEpilogue(0);
+  ElementComputeEpilogue beta = ElementComputeEpilogue(1);
 
   // Split K dimension into 1 partitions
   int split_k_slices = 1;
@@ -410,8 +410,8 @@ int run(Options &options) {
       d_tensor_d_scattered,   // <- reference to matrix D on device
       cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
       cutlass::layout::RowMajor().capacity(problem_size.kn()),
-      cutlass::layout::RowMajor().capacity(problem_size.mn()),
-      cutlass::layout::RowMajor().capacity(problem_size.mn()),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
       cutlass::layout::RowMajor().stride(),
       cutlass::layout::RowMajor().stride(),
       cutlass::layout::RowMajor().stride(),
@@ -485,13 +485,34 @@ int run(Options &options) {
 
       std::ofstream file(fname.str());
 
-      file 
-        << "A =\n" << tensor_a.data()
-        << "\nB =\n" << tensor_b.data()
-        << "\nindices =\n" << tensor_indices.data()
-        << "\nC =\n" << tensor_c.data()
-        << "\n\nReference =\n" << tensor_d_ref.data()
-        << "\nComputed =\n" << tensor_d_scattered.data();
+      file << "A =\n";
+      for (auto &e : tensor_a)
+        file << e << ',';
+
+      file << "\nB =\n";
+      for (auto &e : tensor_b)
+        file << e << ',';
+
+      file << "\nindices =\n";
+      for (auto &e : tensor_indices)
+        file << e << ',';
+
+      file << "\nout_indices =\n";
+      for (auto &e : tensor_out_indices)
+        file << e << ',';
+
+      file << "\nC =\n";
+      for (auto &e : tensor_c)
+        file << e << ',';
+
+      file << "\n\nReference =\n";
+      for (auto &e : tensor_d_ref)
+        file << e << ',';
+
+      file << "\nComputed =\n";
+      for (auto &e : tensor_d_scattered)
+        file << e << ',';
+        
       return -1;
     } else {
       std::cout << "Passed!\n";
