@@ -136,7 +136,7 @@ struct Options {
   Options():
     help(false),
     problem_size({4, 4, 4}),
-    index_size(2),
+    index_size(1),
     reference_check(true),
     iterations(20) { }
 
@@ -458,42 +458,45 @@ int run(Options &options) {
   
     bool passed = tensor_d_scattered == tensor_d_ref;
 
+    std::stringstream fname;
+    fname << "error_gather_GEMM_scatter_fusion.txt";
+    std::cerr << "Dumping results in " << fname.str() << "\n";
+
+    std::ofstream file(fname.str());
+
+    file << "A =\n";
+    for (auto &e : tensor_a)
+      file << e << ',';
+
+    file << "\nB =\n";
+    for (auto &e : tensor_b)
+      file << e << ',';
+
+    file << "\nindices =\n";
+    for (auto &e : tensor_indices)
+      file << e << ',';
+
+    file << "\nout_indices =\n";
+    for (auto &e : tensor_out_indices)
+      file << e << ',';
+
+    file << "\nC =\n";
+    for (auto &e : tensor_c)
+      file << e << ',';
+
+    file << "\n\nReference =\n";
+    for (auto &e : tensor_d_ref)
+      file << e << ',';
+
+    file << "\nComputed =\n";
+    for (auto &e : tensor_d_scattered)
+      file << e << ',';
+
+    file.close();
+
     if (!passed) {
       std::cout << "Failed!\n";
 
-      std::stringstream fname;
-      fname << "error_gather_GEMM_scatter_fusion.txt";
-      std::cerr << "Dumping results in " << fname.str() << "\n";
-
-      std::ofstream file(fname.str());
-
-      file << "A =\n";
-      for (auto &e : tensor_a)
-        file << e << ',';
-
-      file << "\nB =\n";
-      for (auto &e : tensor_b)
-        file << e << ',';
-
-      file << "\nindices =\n";
-      for (auto &e : tensor_indices)
-        file << e << ',';
-
-      file << "\nout_indices =\n";
-      for (auto &e : tensor_out_indices)
-        file << e << ',';
-
-      file << "\nC =\n";
-      for (auto &e : tensor_c)
-        file << e << ',';
-
-      file << "\n\nReference =\n";
-      for (auto &e : tensor_d_ref)
-        file << e << ',';
-
-      file << "\nComputed =\n";
-      for (auto &e : tensor_d_scattered)
-        file << e << ',';
         
       return -1;
     } else {
