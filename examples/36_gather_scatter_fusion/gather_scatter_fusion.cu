@@ -295,14 +295,14 @@ int run(Options &options) {
 
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> dist(-3,3);
+  std::uniform_real_distribution<float> dist(-1,1);
   auto ran = [&dist, &gen](){
     return dist(gen);
   };
   std::generate(tensor_a.begin(), tensor_a.end(), ran);
   std::generate(tensor_b.begin(), tensor_b.end(), ran);
   std::generate(tensor_c.begin(), tensor_c.end(), ran);
-  //std::generate(tensor_d_scattered.begin(), tensor_d_scattered.end(), ran);
+  std::vector<ElementOutput> tensor_d_ref = tensor_d_scattered;
 
 
   std::vector<int> tensor_indices(options.index_size);
@@ -318,149 +318,6 @@ int run(Options &options) {
   std::random_shuffle(to_fill.begin(), to_fill.end());
   memcpy(tensor_out_indices.data(), to_fill.data(), options.index_size * sizeof(int));
 
-  // Copy data from host to GPU
-
-  ElementInputA *d_tensor_a;
-  ElementInputB *d_tensor_b;
-  ElementOutput *d_tensor_c;
-  ElementOutput *d_tensor_d_scattered;
-  int *d_tensor_indices;
-  int *d_tensor_out_indices;
-
-  cudaMalloc(&d_tensor_a, tensor_a.size() * sizeof(ElementInputA));
-  cudaMalloc(&d_tensor_b, tensor_b.size() * sizeof(ElementInputB));
-  cudaMalloc(&d_tensor_c, tensor_c.size() * sizeof(ElementOutput));
-  cudaMalloc(&d_tensor_d_scattered,
-             tensor_d_scattered.size() * sizeof(ElementOutput));
-  cudaMalloc(&d_tensor_indices, tensor_indices.size() * sizeof(int));
-  cudaMalloc(&d_tensor_out_indices, tensor_out_indices.size() * sizeof(int));
-
-  cudaDeviceSynchronize();
-
-  cudaMemcpy(d_tensor_a, tensor_a.data(),
-             tensor_a.size() * sizeof(ElementInputA), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_tensor_b, tensor_b.data(),
-             tensor_b.size() * sizeof(ElementInputB), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_tensor_c, tensor_c.data(),
-             tensor_c.size() * sizeof(ElementOutput), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_tensor_d_scattered, tensor_d_scattered.data(),
-             tensor_d_scattered.size() * sizeof(ElementOutput),
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(d_tensor_indices, tensor_indices.data(),
-             tensor_indices.size() * sizeof(int),
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(d_tensor_out_indices, tensor_out_indices.data(),
-             tensor_out_indices.size() * sizeof(int),
-             cudaMemcpyHostToDevice);
-
-  cudaDeviceSynchronize();
-  // Initialize alpha/beta for dot product computation
-  ElementComputeEpilogue alpha = ElementComputeEpilogue(1);
-  ElementComputeEpilogue beta = ElementComputeEpilogue(1);
-
-  // Split K dimension into 1 partitions
-  int split_k_slices = 1;
-
-  // Create a tuple of gemm kernel arguments. This is later passed as arguments to launch
-  // instantiated CUTLASS kernel
-  typename Gemm::Arguments arguments{
-      cutlass::gemm::GemmUniversalMode::kGemm, 
-      problem_size_real,                  // <- problem size of matrix multiplication
-      split_k_slices,                     // <- k-dimension split factor
-      {alpha, beta},                      // <- alpha, beta
-      d_tensor_a,             // <- reference to matrix A on device
-      d_tensor_b,             // <- reference to matrix B on device
-      d_tensor_c,             // <- reference to matrix C on device
-      d_tensor_d_scattered,   // <- reference to matrix D on device
-      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
-      cutlass::layout::RowMajor().capacity(problem_size.kn()),
-      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
-      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
-      //cutlass::layout::RowMajor().stride(),
-      //cutlass::layout::RowMajor().stride(),
-      //cutlass::layout::RowMajor().stride(),
-      //cutlass::layout::RowMajor().stride(),
-      problem_size_real.k(),
-      problem_size_real.n(),
-      problem_size_real.n(),
-      problem_size_real.n(),
-      d_tensor_indices,                             // <- pointer to index vector to gather A on device
-      nullptr,       // <- pointer to index vector to gather B on device
-      d_tensor_out_indices};      // <- pointer to index vector to scatter D on device
-
-  // Using the arguments, query for extra workspace required for matrix multiplication computation
-  size_t workspace_size = Gemm::get_workspace_size(arguments);
-
-  // Allocate workspace memory
-  cutlass::device_memory::allocation<uint8_t> workspace(workspace_size);
-
-  // Instantiate CUTLASS kernel depending on templates
-  Gemm gemm_op;
-
-  // Check the problem size is supported or not 
-  cutlass::Status status = gemm_op.can_implement(arguments);
-  CUTLASS_CHECK(status);
-
-  // Initialize CUTLASS kernel with arguments and workspace pointer
-  status = gemm_op.initialize(arguments, workspace.get());
-  CUTLASS_CHECK(status);
-
-  // CPU reference calculation
-  std::vector<ElementOutput> tensor_d_ref = tensor_d_scattered;
-  std::cout<<"a"<<':';
-  print<<<1,1>>>(d_tensor_a,tensor_a.size(),kFloat);
-  cudaDeviceSynchronize();
-
-  std::cout<<"b"<<':';
-  print<<<1,1>>>(d_tensor_b,tensor_b.size(),kFloat);
-  cudaDeviceSynchronize();
-
-  std::cout<<"c"<<':';
-  print<<<1,1>>>(d_tensor_c,tensor_c.size(),kFloat);
-  cudaDeviceSynchronize();
-
-  std::cout<<"idx"<<':';
-  print<<<1,1>>>(d_tensor_indices,tensor_indices.size(),kInt);
-  cudaDeviceSynchronize();
-
-  std::cout<<"out_idx"<<':';
-  print<<<1,1>>>(d_tensor_out_indices,tensor_out_indices.size(),kInt);
-  cudaDeviceSynchronize();
-
-  std::cout<<"d_scattered0"<<':';
-  print<<<1,1>>>(d_tensor_d_scattered,tensor_d_scattered.size(),kFloat);
-  cudaDeviceSynchronize();
-
-  status = gemm_op();
-  cudaDeviceSynchronize();
-  CUTLASS_CHECK(status);
-
-  std::cout<<"d_scattered1"<<':';
-  print<<<1,1>>>(d_tensor_d_scattered,tensor_d_scattered.size(),kFloat);
-  cudaDeviceSynchronize();
-
-  if (options.reference_check) {
-    for (int i = 0; i < options.index_size; ++i) {
-      int a_row = tensor_indices.at(i);
-      int c_d_row = tensor_out_indices.at(i);
-      for (int j = 0; j < problem_size.n(); ++j) {
-
-        for (int k = 0; k < problem_size.k(); ++k) {
-          tensor_d_ref.at(c_d_row * problem_size.n() + j) +=
-              alpha * tensor_a.at(a_row * problem_size.k() + k) *
-              tensor_b.at(k * problem_size.n() + j);
-        }
-
-        tensor_d_ref.at(c_d_row * problem_size.n() + j) +=
-            (beta * tensor_c.at(c_d_row * problem_size.n() + j));
-      }
-    }
-
-    // Copy output data from CUTLASS and reference kernel to host for comparison
-    cudaMemcpy(tensor_d_scattered.data(),d_tensor_d_scattered,tensor_d_scattered.size()*sizeof(ElementOutput),cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-  
-    bool passed = tensor_d_scattered == tensor_d_ref;
 
     std::stringstream fname;
     fname << "error_gather_GEMM_scatter_fusion.txt";
@@ -488,7 +345,123 @@ int run(Options &options) {
     for (auto &e : tensor_c)
       file << e << ',';
 
-    file << "\n\nReference =\n";
+    file << "\nD =\n";
+    for (auto &e : tensor_d_scattered)
+      file << e << ',';
+
+    file << "\n\nReference0 =\n";
+    for (auto &e : tensor_d_ref)
+      file << e << ',';
+  // Copy data from host to GPU
+
+  ElementInputA *d_tensor_a;
+  ElementInputB *d_tensor_b;
+  ElementOutput *d_tensor_c;
+  ElementOutput *d_tensor_d_scattered;
+  int *d_tensor_indices;
+  int *d_tensor_out_indices;
+
+  cudaMalloc(&d_tensor_a, tensor_a.size() * sizeof(ElementInputA));
+  cudaMalloc(&d_tensor_b, tensor_b.size() * sizeof(ElementInputB));
+  cudaMalloc(&d_tensor_c, tensor_c.size() * sizeof(ElementOutput));
+  cudaMalloc(&d_tensor_d_scattered,
+             tensor_d_scattered.size() * sizeof(ElementOutput));
+  cudaMalloc(&d_tensor_indices, tensor_indices.size() * sizeof(int));
+  cudaMalloc(&d_tensor_out_indices, tensor_out_indices.size() * sizeof(int));
+
+  cudaMemcpy(d_tensor_a, tensor_a.data(),
+             tensor_a.size() * sizeof(ElementInputA), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_tensor_b, tensor_b.data(),
+             tensor_b.size() * sizeof(ElementInputB), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_tensor_c, tensor_c.data(),
+             tensor_c.size() * sizeof(ElementOutput), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_tensor_d_scattered, tensor_d_scattered.data(),
+             tensor_d_scattered.size() * sizeof(ElementOutput),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(d_tensor_indices, tensor_indices.data(),
+             tensor_indices.size() * sizeof(int),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(d_tensor_out_indices, tensor_out_indices.data(),
+             tensor_out_indices.size() * sizeof(int),
+             cudaMemcpyHostToDevice);
+
+  // Initialize alpha/beta for dot product computation
+  ElementComputeEpilogue alpha = ElementComputeEpilogue(1);
+  ElementComputeEpilogue beta = ElementComputeEpilogue(1);
+
+  // Split K dimension into 1 partitions
+  int split_k_slices = 1;
+
+  // Create a tuple of gemm kernel arguments. This is later passed as arguments to launch
+  // instantiated CUTLASS kernel
+  typename Gemm::Arguments arguments{
+      cutlass::gemm::GemmUniversalMode::kGemm, 
+      problem_size_real,                  // <- problem size of matrix multiplication
+      split_k_slices,                     // <- k-dimension split factor
+      {alpha, beta},                      // <- alpha, beta
+      d_tensor_a,             // <- reference to matrix A on device
+      d_tensor_b,             // <- reference to matrix B on device
+      d_tensor_c,             // <- reference to matrix C on device
+      d_tensor_d_scattered,   // <- reference to matrix D on device
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
+      cutlass::layout::RowMajor().capacity(problem_size.kn()),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
+      problem_size_real.k(),
+      problem_size_real.n(),
+      problem_size_real.n(),
+      problem_size_real.n(),
+      d_tensor_indices,                             // <- pointer to index vector to gather A on device
+      nullptr,       // <- pointer to index vector to gather B on device
+      d_tensor_out_indices};      // <- pointer to index vector to scatter D on device
+
+  // Using the arguments, query for extra workspace required for matrix multiplication computation
+  size_t workspace_size = Gemm::get_workspace_size(arguments);
+
+  // Allocate workspace memory
+  cutlass::device_memory::allocation<uint8_t> workspace(workspace_size);
+
+  // Instantiate CUTLASS kernel depending on templates
+  Gemm gemm_op;
+
+  // Check the problem size is supported or not 
+  cutlass::Status status = gemm_op.can_implement(arguments);
+  CUTLASS_CHECK(status);
+
+  // Initialize CUTLASS kernel with arguments and workspace pointer
+  status = gemm_op.initialize(arguments, workspace.get());
+  CUTLASS_CHECK(status);
+
+  // CPU reference calculation
+
+  status = gemm_op();
+  cudaDeviceSynchronize();
+  CUTLASS_CHECK(status);
+
+  if (options.reference_check) {
+    for (int i = 0; i < options.index_size; ++i) {
+      int a_row = tensor_indices.at(i);
+      int c_d_row = tensor_out_indices.at(i);
+      for (int j = 0; j < problem_size.n(); ++j) {
+
+        for (int k = 0; k < problem_size.k(); ++k) {
+          tensor_d_ref.at(c_d_row * problem_size.n() + j) +=
+              alpha * tensor_a.at(a_row * problem_size.k() + k) *
+              tensor_b.at(k * problem_size.n() + j);
+        }
+
+        tensor_d_ref.at(c_d_row * problem_size.n() + j) +=
+            (beta * tensor_c.at(c_d_row * problem_size.n() + j));
+      }
+    }
+
+    // Copy output data from CUTLASS and reference kernel to host for comparison
+    cudaMemcpy(tensor_d_scattered.data(),d_tensor_d_scattered,tensor_d_scattered.size()*sizeof(ElementOutput),cudaMemcpyDeviceToHost);
+    //cudaDeviceSynchronize();
+  
+    bool passed = tensor_d_scattered == tensor_d_ref;
+
+    file << "\n\nReference1 =\n";
     for (auto &e : tensor_d_ref)
       file << e << ',';
 
