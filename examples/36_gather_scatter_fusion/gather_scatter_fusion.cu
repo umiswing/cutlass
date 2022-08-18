@@ -84,6 +84,7 @@
 #include "cutlass/util/reference/host/tensor_fill.h"
 #include "cutlass/util/tensor_view_io.h"
 #include "helper.h"
+#include <cmath>
 
 enum Type{kInt,kFloat,kDouble};
 template<typename T>
@@ -297,7 +298,7 @@ int run(Options &options) {
   std::mt19937 gen(rd());
   std::uniform_real_distribution<float> dist(-1,1);
   auto ran = [&dist, &gen](){
-    return dist(gen);
+    return trunc(dist(gen)*1e5)/1e5;
   };
   std::generate(tensor_a.begin(), tensor_a.end(), ran);
   std::generate(tensor_b.begin(), tensor_b.end(), ran);
