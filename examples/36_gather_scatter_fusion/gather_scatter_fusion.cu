@@ -136,7 +136,7 @@ struct Options {
   Options():
     help(false),
     problem_size({4, 4, 4}),
-    index_size(1),
+    index_size(2),
     reference_check(true),
     iterations(20) { }
 
@@ -355,7 +355,7 @@ int run(Options &options) {
 
   cudaDeviceSynchronize();
   // Initialize alpha/beta for dot product computation
-  ElementComputeEpilogue alpha = ElementComputeEpilogue(0);
+  ElementComputeEpilogue alpha = ElementComputeEpilogue(1);
   ElementComputeEpilogue beta = ElementComputeEpilogue(1);
 
   // Split K dimension into 1 partitions
@@ -376,10 +376,14 @@ int run(Options &options) {
       cutlass::layout::RowMajor().capacity(problem_size.kn()),
       cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
       cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
-      cutlass::layout::RowMajor().stride(),
-      cutlass::layout::RowMajor().stride(),
-      cutlass::layout::RowMajor().stride(),
-      cutlass::layout::RowMajor().stride(),
+      //cutlass::layout::RowMajor().stride(),
+      //cutlass::layout::RowMajor().stride(),
+      //cutlass::layout::RowMajor().stride(),
+      //cutlass::layout::RowMajor().stride(),
+      problem_size_real.k(),
+      problem_size_real.n(),
+      problem_size_real.n(),
+      problem_size_real.n(),
       d_tensor_indices,                             // <- pointer to index vector to gather A on device
       nullptr,       // <- pointer to index vector to gather B on device
       d_tensor_out_indices};      // <- pointer to index vector to scatter D on device
