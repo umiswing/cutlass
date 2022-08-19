@@ -406,8 +406,8 @@ int run(Options &options) {
       d_tensor_d_scattered,   // <- reference to matrix D on device
       cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
       cutlass::layout::RowMajor().capacity(problem_size.kn()),
-      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
-      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.k())),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.n())),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(options.index_size, problem_size.n())),
       problem_size_real.k(),
       problem_size_real.n(),
       problem_size_real.n(),

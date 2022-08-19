@@ -38,7 +38,7 @@ template <typename ElementAccumulator=float, typename ElementComputeEpilogue=flo
 void gather_gemm_scatter(ElementInputA *const A, ElementInputB *const B,
                          ElementAccumulator *const C, ElementOutput *const D,
                          const int m, const int n, const int k,
-                         const IdxT *a_indices, const IdxT *b_indices, const IdxT *c_d_indices,
+                         const IdxT *a_indices, const IdxT *c_d_indices,
                          const int indices_size,
                          ElementComputeEpilogue const alpha,
                          ElementComputeEpilogue const beta) {
@@ -124,15 +124,14 @@ void gather_gemm_scatter(ElementInputA *const A, ElementInputB *const B,
       B,           // <- reference to matrix B on device
       C,           // <- reference to matrix C on device
       D, // <- reference to matrix D on device
-      cutlass::layout::RowMajor().capacity(
-          cutlass::make_Coord(index_size, problem_size.k())),
-      cutlass::layout::RowMajor().capacity(problem_size.kn()),
-      cutlass::layout::RowMajor().capacity(problem_size.mn()),
-      cutlass::layout::RowMajor().capacity(problem_size.mn()),
-      cutlass::layout::RowMajor().stride(),
-      cutlass::layout::RowMajor().stride(),
-      cutlass::layout::RowMajor().stride(),
-      cutlass::layout::RowMajor().stride(),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(index_size, problem_size_real.k())),
+      cutlass::layout::RowMajor().capacity(problem_size_real.kn()),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(index_size, problem_size_real.n())),
+      cutlass::layout::RowMajor().capacity(cutlass::make_Coord(index_size, problem_size_real.n())),
+      problem_size_real.k(),
+      problem_size_real.n(),
+      problem_size_real.n(),
+      problem_size_real.n(),
       a_indices,      // <- pointer to index vector to gather A on device
       nullptr,               // <- pointer to index vector to gather B on device
       c_d_indices}; // <- pointer to index vector to scatter D on
